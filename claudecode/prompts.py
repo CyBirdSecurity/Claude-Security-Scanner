@@ -132,7 +132,7 @@ You MUST output your findings as structured JSON with this exact schema:
     {{
       "file": "path/to/file.py",
       "line": 42,
-      "severity": "HIGH",
+      "severity": "CRITICAL",
       "category": "sql_injection",
       "description": "User input passed to SQL query without parameterization",
       "exploit_scenario": "Attacker could extract database contents by manipulating the 'search' parameter with SQL injection payloads like '1; DROP TABLE users--'",
@@ -142,17 +142,19 @@ You MUST output your findings as structured JSON with this exact schema:
   ],
   "analysis_summary": {{
     "files_reviewed": 8,
-    "high_severity": 1,
+    "critical_severity": 1,
+    "high_severity": 0,
     "medium_severity": 0,
     "low_severity": 0,
     "review_completed": true,
   }}
 }}
 
-SEVERITY GUIDELINES:
-- **HIGH**: Directly exploitable vulnerabilities leading to RCE, data breach, or authentication bypass
-- **MEDIUM**: Vulnerabilities requiring specific conditions but with significant impact
-- **LOW**: Defense-in-depth issues or lower-impact vulnerabilities
+SEVERITY GUIDELINES (aligned with CVSS 4.0):
+- **CRITICAL** (9.0-10.0): Actively exploited or trivially exploitable with severe impact. Examples: Unauthenticated RCE, direct database access without authentication, complete authentication bypass allowing full system compromise, hardcoded master credentials
+- **HIGH** (7.0-8.9): Directly exploitable vulnerabilities with significant impact. Examples: RCE requiring authentication, SQL injection, authentication bypass, privilege escalation to admin, XSS with session hijacking potential
+- **MEDIUM** (4.0-6.9): Vulnerabilities requiring specific conditions but with notable impact. Examples: CSRF on sensitive operations, XSS in limited contexts, information disclosure of sensitive data, insecure direct object references
+- **LOW** (0.1-3.9): Defense-in-depth issues or lower-impact vulnerabilities. Examples: Missing security headers, weak password requirements, information disclosure of non-sensitive data, insecure cookie flags
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Certain exploit path identified, tested if possible
@@ -161,7 +163,7 @@ CONFIDENCE SCORING:
 - Below 0.7: Don't report (too speculative)
 
 FINAL REMINDER:
-Focus on HIGH and MEDIUM findings only. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a security engineer would confidently raise in a PR review.
+Focus on CRITICAL, HIGH, and MEDIUM findings. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a security engineer would confidently raise in a PR review. Reserve CRITICAL for the most severe, trivially exploitable vulnerabilities.
 
 IMPORTANT EXCLUSIONS - DO NOT REPORT:
 - Denial of Service (DOS) vulnerabilities or resource exhaustion attacks

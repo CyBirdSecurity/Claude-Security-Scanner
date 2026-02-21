@@ -21,6 +21,7 @@ name: Security Review
 permissions:
   pull-requests: write  # Needed for leaving PR comments
   contents: read
+  security-events: write  # Needed for SARIF upload (optional)
 
 on:
   pull_request:
@@ -33,10 +34,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
-      
+
       - uses: anthropics/claude-code-security-review@main
         with:
           comment-pr: true
+          upload-sarif: true  # Upload to GitHub Code Scanning (optional)
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
 ```
 
@@ -53,6 +55,7 @@ This action is not hardened against prompt injection attacks and should only be 
 | `claude-api-key` | Anthropic Claude API key for security analysis. <br>*Note*: This API key needs to be enabled for both the Claude API and Claude Code usage. | None | Yes |
 | `comment-pr` | Whether to comment on PRs with findings | `true` | No |
 | `upload-results` | Whether to upload results as artifacts | `true` | No |
+| `upload-sarif` | Whether to upload results to GitHub Code Scanning as SARIF | `false` | No |
 | `exclude-directories` | Comma-separated list of directories to exclude from scanning | None | No |
 | `claude-model` | Claude [model name](https://docs.anthropic.com/en/docs/about-claude/models/overview#model-names) to use. Defaults to Opus 4.1. | `claude-opus-4-1-20250805` | No |
 | `claudecode-timeout` | Timeout for ClaudeCode analysis in minutes | `20` | No |
@@ -90,6 +93,47 @@ claudecode/
 3. **Finding Generation**: Security issues are identified with detailed explanations, severity ratings, and remediation guidance
 4. **False Positive Filtering**: Advanced filtering removes low-impact or false positive prone findings to reduce noise
 5. **PR Comments**: Findings are posted as review comments on the specific lines of code
+6. **SARIF Upload** (optional): Findings are uploaded to GitHub Code Scanning for centralized security tracking
+
+## GitHub Code Scanning Integration
+
+This action can upload findings to [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning) in SARIF format, making security issues visible in your repository's Security tab.
+
+### Enabling SARIF Upload
+
+Set `upload-sarif: true` in your workflow and ensure the `security-events: write` permission is granted:
+
+```yaml
+permissions:
+  security-events: write  # Required for SARIF upload
+  pull-requests: write
+  contents: read
+
+- uses: anthropics/claude-code-security-review@main
+  with:
+    upload-sarif: true
+    claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+```
+
+### CVSS 4.0 Severity Ratings
+
+Findings are aligned with [CVSS 4.0](https://www.first.org/cvss/v4.0/specification-document) severity ratings:
+
+| Severity | CVSS Range | Description | Examples |
+|----------|------------|-------------|----------|
+| **CRITICAL** | 9.0-10.0 | Actively exploited or trivially exploitable with severe impact | Unauthenticated RCE, hardcoded master credentials, complete auth bypass |
+| **HIGH** | 7.0-8.9 | Directly exploitable with significant impact | SQL injection, authenticated RCE, privilege escalation to admin |
+| **MEDIUM** | 4.0-6.9 | Requires specific conditions but notable impact | CSRF on sensitive operations, XSS in limited contexts, information disclosure |
+| **LOW** | 0.1-3.9 | Defense-in-depth or lower-impact issues | Missing security headers, weak password requirements, insecure cookie flags |
+
+For CRITICAL and HIGH severity findings, the exact score within the range is calculated based on the confidence level, providing granular risk assessment.
+
+### Viewing Results
+
+Once uploaded, findings appear in:
+- **Security tab** → **Code scanning** in your repository
+- **Pull request** → **Files changed** with inline annotations
+- **Security Overview** for organization-level tracking
 
 ## Security Analysis Capabilities
 

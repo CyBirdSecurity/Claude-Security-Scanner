@@ -12,7 +12,12 @@ inputs:
     description: 'Whether to upload results as artifacts'
     required: false
     default: 'true'
-  
+
+  upload-sarif:
+    description: 'Whether to upload results to GitHub Code Scanning as SARIF'
+    required: false
+    default: 'false'
+
   exclude-directories:
     description: 'Comma-separated list of directories to exclude from scanning'
     required: false
@@ -303,8 +308,41 @@ runs:
         fi
         
         echo "::endgroup::"
-    
-    
+
+    - name: Generate SARIF file
+      if: steps.claudecode-check.outputs.enable_claudecode == 'true' && inputs.upload-sarif == 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        echo "::group::Generate SARIF file"
+
+        # Check if results file exists
+        if [ ! -f "${{ github.workspace }}/claudecode-results.json" ]; then
+          echo "::warning::Cannot generate SARIF: claudecode-results.json not found"
+          exit 0
+        fi
+
+        # Generate SARIF file
+        python "$ACTION_PATH/claudecode/sarif_generator.py" \
+          "${{ github.workspace }}/claudecode-results.json" \
+          "${{ github.workspace }}/results.sarif"
+
+        if [ -f "${{ github.workspace }}/results.sarif" ]; then
+          echo "SARIF file generated successfully"
+          FILE_SIZE=$(wc -c < "${{ github.workspace }}/results.sarif")
+          echo "SARIF file size: $FILE_SIZE bytes"
+
+          # Validate it's not empty
+          if [ "$FILE_SIZE" -lt 10 ]; then
+            echo "::warning::SARIF file appears to be empty or invalid"
+          fi
+        else
+          echo "::warning::SARIF file generation failed"
+        fi
+
+        echo "::endgroup::"
+
     - name: Upload scan results
       if: always() && inputs.upload-results == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 pinned to commit hash
@@ -317,6 +355,14 @@ runs:
         retention-days: 7
         if-no-files-found: ignore
     
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.upload-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@4f3212b61783c3c68e8309a0f18a699764811cda # v3.27.1 pinned to commit hash
+      with:
+        sarif_file: results.sarif
+        category: claude-security-review
+      continue-on-error: true
+
     - name: Comment PR with findings
       if: github.event_name == 'pull_request' && inputs.comment-pr == 'true' && steps.claudecode-check.outputs.enable_claudecode == 'true'
       shell: bash
