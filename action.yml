@@ -228,7 +228,7 @@ runs:
         # Enable verbose debugging
         echo "::group::ClaudeCode Environment"
         echo "Current directory: $(pwd)"
-        echo "Python version: $(python --version)"
+        echo "Python version: $(python3 --version)"
         echo "Claude CLI version: $(claude --version 2>&1 || echo 'Claude CLI not found')"
         echo "ANTHROPIC_API_KEY set: $(if [ -n "$ANTHROPIC_API_KEY" ]; then echo 'Yes'; else echo 'No'; fi)"
         echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
@@ -244,7 +244,7 @@ runs:
         echo "Updated PYTHONPATH: $PYTHONPATH"
         
         # Run from the action root directory so Python can find the claudecode module
-        python -u claudecode/github_action_audit.py > claudecode/claudecode-results.json 2>claudecode/claudecode-error.log || CLAUDECODE_EXIT_CODE=$?
+        python3 -u claudecode/github_action_audit.py > claudecode/claudecode-results.json 2>claudecode/claudecode-error.log || CLAUDECODE_EXIT_CODE=$?
         
         if [ -n "$CLAUDECODE_EXIT_CODE" ]; then
           echo "::warning::ClaudeCode exited with code $CLAUDECODE_EXIT_CODE"
@@ -324,7 +324,7 @@ runs:
         fi
 
         # Generate SARIF file
-        python "$ACTION_PATH/claudecode/sarif_generator.py" \
+        python3 "$ACTION_PATH/claudecode/sarif_generator.py" \
           "${{ github.workspace }}/claudecode-results.json" \
           "${{ github.workspace }}/results.sarif"
 
