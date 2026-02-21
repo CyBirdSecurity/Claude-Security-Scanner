@@ -236,6 +236,8 @@ class SarifGenerator:
         """
         Extract unique rules from findings.
 
+        Each finding gets its own rule to ensure titles match the actual vulnerability.
+
         Args:
             findings: List of finding dictionaries
 
@@ -247,8 +249,15 @@ class SarifGenerator:
         for finding in findings:
             category = finding.get('category', 'unknown')
             severity = finding.get('severity', 'MEDIUM').upper()
+            description = finding.get('description', 'Security vulnerability detected')
 
-            if category not in rules:
+            # Create unique rule ID by hashing category + description
+            # This ensures each unique finding gets its own rule with correct title
+            rule_id_string = f"{category}:{description}"
+            rule_id_hash = hashlib.sha256(rule_id_string.encode()).hexdigest()[:8]
+            rule_id = f"{category}_{rule_id_hash}"
+
+            if rule_id not in rules:
                 # Get the security-severity for this rule
                 confidence = finding.get('confidence', 0.8)
                 security_severity = self._calculate_severity_score(severity, confidence)
@@ -264,15 +273,15 @@ class SarifGenerator:
                 else:
                     severity_tag = "low"
 
-                # Create rule definition
-                rules[category] = {
-                    "id": category,
+                # Create rule definition with unique ID
+                rules[rule_id] = {
+                    "id": rule_id,
                     "name": category.replace('_', ' ').title(),
                     "shortDescription": {
-                        "text": finding.get('description', 'Security vulnerability detected')[:1024]
+                        "text": description[:1024]
                     },
                     "fullDescription": {
-                        "text": finding.get('description', 'Security vulnerability detected')
+                        "text": description
                     },
                     "help": {
                         "text": finding.get('recommendation', 'Review and remediate this security issue'),
@@ -312,8 +321,15 @@ class SarifGenerator:
         # Build results array
         results = []
         for finding in findings:
+            category = finding.get('category', 'unknown')
             severity = finding.get('severity', 'MEDIUM').upper()
             confidence = finding.get('confidence', None)
+            description = finding.get('description', 'Security vulnerability detected')
+
+            # Generate the same unique rule ID used in _extract_rules
+            rule_id_string = f"{category}:{description}"
+            rule_id_hash = hashlib.sha256(rule_id_string.encode()).hexdigest()[:8]
+            rule_id = f"{category}_{rule_id_hash}"
 
             # Calculate security-severity score
             security_severity = self._calculate_severity_score(severity, confidence)
@@ -322,20 +338,18 @@ class SarifGenerator:
             file_path = self._get_relative_path(finding.get('file', 'unknown'))
 
             # Build message text with exploit scenario on new line
-            message_text = finding.get('description', 'Security vulnerability detected')
+            message_text = description
             if finding.get('exploit_scenario'):
                 message_text += f"\n\nExploit Scenario: {finding['exploit_scenario']}"
 
             # Build markdown message with better formatting
-            message_markdown = finding.get('description', 'Security vulnerability detected')
+            message_markdown = description
             if finding.get('exploit_scenario'):
                 message_markdown += f"\n\n**Exploit Scenario:** {finding['exploit_scenario']}"
-            if finding.get('recommendation'):
-                message_markdown += f"\n\n**Recommendation:** {finding['recommendation']}"
 
             # Build result object
             result = {
-                "ruleId": finding.get('category', 'unknown'),
+                "ruleId": rule_id,
                 "level": self._get_sarif_level(severity),
                 "message": {
                     "text": message_text,
