@@ -36,17 +36,14 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 2
-
       - uses: anthropics/claude-code-security-review@main
         with:
           comment-pr: true
           upload-sarif: true  # Upload to GitHub Code Scanning (optional)
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
 ```
+
+**Note**: The action automatically checks out your repository - no separate checkout step needed!
 
 ### Full Repository Scans
 
@@ -69,13 +66,13 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: anthropics/claude-code-security-review@main
         with:
           upload-sarif: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
 ```
+
+**Note**: The action automatically checks out your repository - no separate checkout step needed!
 
 ## Security Considerations
 

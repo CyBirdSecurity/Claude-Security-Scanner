@@ -65,6 +65,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Checkout repository
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 pinned to commit hash
+      with:
+        # For PR scans, checkout the PR head
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        # Fetch depth 0 for full repo scans, 2 for PR scans
+        fetch-depth: ${{ github.event_name == 'pull_request' && '2' || '0' }}
+
     - name: Install GitHub CLI
       shell: bash
       run: |

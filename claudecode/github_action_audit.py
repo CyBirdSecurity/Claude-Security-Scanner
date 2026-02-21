@@ -258,6 +258,19 @@ def get_repository_files(repo_path: Path, excluded_dirs: List[str]) -> Dict[str,
 
     logger.info(f"Found {len(files)} code files in repository")
 
+    # If no files found, provide helpful debugging info
+    if len(files) == 0:
+        logger.warning("No code files found in repository!")
+        logger.warning(f"Repository path: {repo_path}")
+        logger.warning(f"Repository path exists: {repo_path.exists()}")
+        if repo_path.exists():
+            all_files = list(repo_path.glob('*'))
+            logger.warning(f"Files in root directory: {[f.name for f in all_files[:20]]}")
+        logger.warning("Common causes:")
+        logger.warning("1. Missing 'actions/checkout' step in workflow")
+        logger.warning("2. Repository is empty")
+        logger.warning("3. All files are in excluded directories")
+
     return {
         'number': 0,  # No PR number for full repo scan
         'title': 'Full Repository Security Scan',
