@@ -197,17 +197,21 @@ runs:
       run: |
         echo "Running ClaudeCode AI security analysis..."
         echo "----------------------------------------"
-        
+
         # Initialize outputs
         echo "findings_count=0" >> $GITHUB_OUTPUT
         echo "results_file=claudecode/claudecode-results.json" >> $GITHUB_OUTPUT
-        
-        # Skip ClaudeCode if not a PR
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
-          echo "ClaudeCode only runs on pull requests, skipping"
-          exit 0
+
+        # Determine scan mode based on event type
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "Scan mode: Pull Request (analyzing changed files only)"
+          SCAN_MODE="pr"
+        else
+          echo "Scan mode: Full Repository (analyzing all code files)"
+          SCAN_MODE="full_repo"
         fi
-        
+        export SCAN_MODE
+
         # Validate API key is provided
         if [ -z "$ANTHROPIC_API_KEY" ]; then
           echo "::error::ANTHROPIC_API_KEY is not set. Please provide the claude-api-key input to the action."
