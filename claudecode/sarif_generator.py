@@ -6,7 +6,9 @@ Converts security findings to SARIF 2.1.0 format aligned with CVSS 4.0 severity 
 
 import json
 import hashlib
-from typing import Dict, Any, List
+import os
+import re
+from typing import Dict, Any, List, Tuple
 from pathlib import Path
 
 
@@ -43,6 +45,7 @@ class SarifGenerator:
         self.tool_name = tool_name
         self.tool_version = tool_version
         self.repo_root = Path(repo_root) if repo_root else Path.cwd()
+        self._file_cache = {}  # Cache file contents to avoid repeated I/O
 
     def _calculate_severity_score(self, severity: str, confidence: float = None) -> float:
         """
@@ -121,12 +124,86 @@ class SarifGenerator:
             # If path is already relative or can't be made relative, return as-is
             return file_path
 
+    def _read_code_snippet(self, file_path: str, line_number: int,
+                           context_lines: int = 2) -> Tuple[bool, str]:
+        """
+        Read code snippet around a specific line for fingerprinting.
+
+        Args:
+            file_path: Path to the file (relative or absolute)
+            line_number: Line number of the finding (1-indexed)
+            context_lines: Number of lines before/after to include
+
+        Returns:
+            Tuple of (success, code_snippet)
+        """
+        cache_key = file_path
+
+        # Check cache first
+        if cache_key not in self._file_cache:
+            try:
+                # Use REPO_PATH if set, otherwise use repo_root
+                repo_path = os.environ.get('REPO_PATH')
+                if repo_path:
+                    full_path = Path(repo_path) / file_path
+                else:
+                    full_path = self.repo_root / file_path
+
+                if not full_path.exists() or not full_path.is_file():
+                    self._file_cache[cache_key] = None
+                    return False, ""
+
+                # Read and cache entire file
+                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    self._file_cache[cache_key] = f.readlines()
+            except Exception:
+                self._file_cache[cache_key] = None
+                return False, ""
+
+        lines = self._file_cache[cache_key]
+        if lines is None:
+            return False, ""
+
+        # Calculate line range (convert 1-indexed to 0-indexed)
+        start_line = max(0, line_number - 1 - context_lines)
+        end_line = min(len(lines), line_number + context_lines)
+
+        # Extract and return snippet
+        snippet_lines = lines[start_line:end_line]
+        return True, ''.join(snippet_lines)
+
+    def _normalize_code_for_fingerprint(self, code: str) -> str:
+        """
+        Normalize code for stable fingerprinting.
+
+        Removes formatting variations while preserving code structure.
+        Handles whitespace changes from auto-formatters (prettier, black, gofmt).
+
+        Args:
+            code: Raw code snippet
+
+        Returns:
+            Normalized code string
+        """
+        lines = code.split('\n')
+        normalized_lines = []
+
+        for line in lines:
+            # Strip leading/trailing whitespace
+            stripped = line.strip()
+            if stripped:  # Skip empty lines
+                # Normalize internal whitespace to single spaces
+                normalized = re.sub(r'\s+', ' ', stripped)
+                normalized_lines.append(normalized)
+
+        return '\n'.join(normalized_lines)
+
     def _generate_fingerprint(self, finding: Dict[str, Any]) -> str:
         """
         Generate a stable fingerprint for finding deduplication.
 
-        Uses a shorter fingerprint format to avoid conflicts with GitHub's
-        CodeQL fingerprint calculation.
+        Uses file path + code content for stability across LLM runs.
+        Falls back to file:line if code cannot be read.
 
         Args:
             finding: Finding dictionary
@@ -134,9 +211,24 @@ class SarifGenerator:
         Returns:
             First 16 characters of SHA-256 hash as fingerprint
         """
-        # Create fingerprint from file, line, and category
-        fingerprint_string = f"{finding.get('file', '')}:{finding.get('line', 0)}:{finding.get('category', '')}"
-        # Use first 16 chars of hash to match GitHub's format expectations
+        file_path = finding.get('file', '')
+        line_number = finding.get('line', 0)
+
+        # Try to read code snippet for content-based fingerprint
+        success, code_snippet = self._read_code_snippet(file_path, line_number)
+
+        if success and code_snippet:
+            # Content-based fingerprint (preferred)
+            normalized_path = self._get_relative_path(file_path)
+            normalized_code = self._normalize_code_for_fingerprint(code_snippet)
+            fingerprint_string = f"{normalized_path}:{normalized_code}"
+        else:
+            # Fallback to file:line if code cannot be read
+            # This handles cases where files are moved/deleted after scanning
+            normalized_path = self._get_relative_path(file_path)
+            fingerprint_string = f"{normalized_path}:{line_number}"
+
+        # Hash and truncate to 16 characters
         full_hash = hashlib.sha256(fingerprint_string.encode()).hexdigest()
         return full_hash[:16]
 
