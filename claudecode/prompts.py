@@ -55,13 +55,14 @@ OBJECTIVE:
 Perform a security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. This is not a general code review - focus ONLY on security implications newly added by this PR. Do not comment on existing security concerns.
 
 CRITICAL INSTRUCTIONS:
-1. MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident of actual exploitability
-2. AVOID NOISE: Skip theoretical issues, style concerns, or low-impact findings
-3. FOCUS ON IMPACT: Prioritize vulnerabilities that could lead to unauthorized access, data breaches, or system compromise
-4. EXCLUSIONS: Do NOT report the following issue types:
-   - Denial of Service (DOS) vulnerabilities, even if they allow service disruption
+1. BE THOROUGH: Flag issues where you're >70% confident of actual exploitability or security impact
+2. PRIORITIZE AUTH/AUTHZ: Pay special attention to missing authentication and authorization checks
+3. CHECK GRAPHQL SECURITY: If GraphQL is detected, thoroughly review resolver security
+4. FOCUS ON IMPACT: Prioritize vulnerabilities that could lead to unauthorized access, data breaches, or system compromise
+5. EXCLUSIONS: Do NOT report the following issue types:
+   - Denial of Service (DOS) vulnerabilities (unless they allow complete service shutdown)
    - Secrets or sensitive data stored on disk (these are handled by other processes)
-   - Rate limiting or resource exhaustion issues
+   - Rate limiting or resource exhaustion issues (unless exploitable for significant impact)
 
 SECURITY CATEGORIES TO EXAMINE:
 
@@ -73,12 +74,21 @@ SECURITY CATEGORIES TO EXAMINE:
 - NoSQL injection in database queries
 - Path traversal in file operations
 
-**Authentication & Authorization Issues:**
-- Authentication bypass logic
-- Privilege escalation paths
-- Session management flaws
-- JWT token vulnerabilities
-- Authorization logic bypasses
+**Authentication & Authorization Issues (CRITICAL - Review Thoroughly):**
+- Missing authentication checks on sensitive endpoints/controllers
+- Authentication bypass logic (conditional checks, logic flaws)
+- Privilege escalation paths (horizontal and vertical)
+- Session management flaws (fixation, hijacking, weak tokens)
+- JWT token vulnerabilities (none algorithm, weak signing, missing expiration)
+- Authorization logic bypasses (IDOR, missing ownership checks)
+- Missing authorization on API mutations/queries
+- Inconsistent authorization across similar endpoints
+- Role-based access control (RBAC) implementation flaws
+- OAuth/SSO implementation vulnerabilities
+- Password reset token vulnerabilities
+- Broken function-level authorization
+- Missing authentication on admin panels or internal tools
+- Default credentials or weak authentication mechanisms
 
 **Crypto & Secrets Management:**
 - Hardcoded API keys, passwords, or tokens
@@ -99,9 +109,36 @@ SECURITY CATEGORIES TO EXAMINE:
 - PII handling violations
 - API endpoint data leakage
 - Debug information exposure
+
+**GraphQL-Specific Vulnerabilities (If GraphQL detected):**
+- Missing authentication/authorization on GraphQL resolvers
+- GraphQL query depth/complexity limits (DoS potential - report if severe)
+- Insecure direct object references in GraphQL queries
+- GraphQL introspection enabled in production
+- Missing field-level authorization in resolvers
+- Batch query abuse potential
+- N+1 query vulnerabilities leading to data exposure
+- GraphQL injection through query variables
+- Missing input validation on mutations
+- Overly permissive query permissions
+- Exposed internal fields or debugging queries
 {custom_categories_section}
+**Framework-Specific Checks:**
+Rails Applications:
+- Mass assignment vulnerabilities (missing strong parameters)
+- Insecure redirect_to with user input
+- Missing CSRF protection on state-changing operations
+- before_action authentication/authorization skips
+- Unsafe deserialization (YAML.load, Marshal.load)
+- SQL injection via raw SQL or unsanitized conditions
+- Command injection via system(), exec(), backticks
+- Missing authorization in controllers/actions
+- Insecure file uploads without validation
+
 Additional notes:
 - Even if something is only exploitable from the local network, it can still be a HIGH severity issue
+- Pay special attention to endpoints that modify data without proper authorization
+- Check for missing authentication on internal/admin routes
 
 ANALYSIS METHODOLOGY:
 
@@ -158,9 +195,15 @@ SEVERITY GUIDELINES (aligned with CVSS 4.0):
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Certain exploit path identified, tested if possible
-- 0.8-0.9: Clear vulnerability pattern with known exploitation methods  
-- 0.7-0.8: Suspicious pattern requiring specific conditions to exploit
+- 0.8-0.9: Clear vulnerability pattern with known exploitation methods
+- 0.7-0.8: Likely vulnerability requiring specific conditions or missing security control
 - Below 0.7: Don't report (too speculative)
+
+SPECIAL EMPHASIS:
+- Missing authentication/authorization checks should be reported even if confidence is 0.7-0.8
+- GraphQL resolvers without proper authorization are HIGH severity
+- Controllers/endpoints accessible without authentication are typically CRITICAL/HIGH
+- Check for inconsistent security controls across similar endpoints
 
 FINAL REMINDER:
 Focus on CRITICAL, HIGH, and MEDIUM findings. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a security engineer would confidently raise in a PR review. Reserve CRITICAL for the most severe, trivially exploitable vulnerabilities.
@@ -213,13 +256,14 @@ OBJECTIVE:
 Perform a comprehensive security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. Focus ONLY on security implications that pose actual risk to the system.
 
 CRITICAL INSTRUCTIONS:
-1. MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident of actual exploitability
-2. AVOID NOISE: Skip theoretical issues, style concerns, or low-impact findings
-3. FOCUS ON IMPACT: Prioritize vulnerabilities that could lead to unauthorized access, data breaches, or system compromise
-4. EXCLUSIONS: Do NOT report the following issue types:
-   - Denial of Service (DOS) vulnerabilities, even if they allow service disruption
+1. BE THOROUGH: Flag issues where you're >70% confident of actual exploitability or security impact
+2. PRIORITIZE AUTH/AUTHZ: Pay special attention to missing authentication and authorization checks
+3. CHECK GRAPHQL SECURITY: If GraphQL is detected, thoroughly review resolver security
+4. FOCUS ON IMPACT: Prioritize vulnerabilities that could lead to unauthorized access, data breaches, or system compromise
+5. EXCLUSIONS: Do NOT report the following issue types:
+   - Denial of Service (DOS) vulnerabilities (unless they allow complete service shutdown)
    - Secrets or sensitive data stored on disk (these are handled by other processes)
-   - Rate limiting or resource exhaustion issues
+   - Rate limiting or resource exhaustion issues (unless exploitable for significant impact)
 
 SECURITY CATEGORIES TO EXAMINE:
 
@@ -231,12 +275,21 @@ SECURITY CATEGORIES TO EXAMINE:
 - NoSQL injection in database queries
 - Path traversal in file operations
 
-**Authentication & Authorization Issues:**
-- Authentication bypass logic
-- Privilege escalation paths
-- Session management flaws
-- JWT token vulnerabilities
-- Authorization logic bypasses
+**Authentication & Authorization Issues (CRITICAL - Review Thoroughly):**
+- Missing authentication checks on sensitive endpoints/controllers
+- Authentication bypass logic (conditional checks, logic flaws)
+- Privilege escalation paths (horizontal and vertical)
+- Session management flaws (fixation, hijacking, weak tokens)
+- JWT token vulnerabilities (none algorithm, weak signing, missing expiration)
+- Authorization logic bypasses (IDOR, missing ownership checks)
+- Missing authorization on API mutations/queries
+- Inconsistent authorization across similar endpoints
+- Role-based access control (RBAC) implementation flaws
+- OAuth/SSO implementation vulnerabilities
+- Password reset token vulnerabilities
+- Broken function-level authorization
+- Missing authentication on admin panels or internal tools
+- Default credentials or weak authentication mechanisms
 
 **Crypto & Secrets Management:**
 - Hardcoded API keys, passwords, or tokens
@@ -257,9 +310,36 @@ SECURITY CATEGORIES TO EXAMINE:
 - PII handling violations
 - API endpoint data leakage
 - Debug information exposure
+
+**GraphQL-Specific Vulnerabilities (If GraphQL detected):**
+- Missing authentication/authorization on GraphQL resolvers
+- GraphQL query depth/complexity limits (DoS potential - report if severe)
+- Insecure direct object references in GraphQL queries
+- GraphQL introspection enabled in production
+- Missing field-level authorization in resolvers
+- Batch query abuse potential
+- N+1 query vulnerabilities leading to data exposure
+- GraphQL injection through query variables
+- Missing input validation on mutations
+- Overly permissive query permissions
+- Exposed internal fields or debugging queries
 {custom_categories_section}
+**Framework-Specific Checks:**
+Rails Applications:
+- Mass assignment vulnerabilities (missing strong parameters)
+- Insecure redirect_to with user input
+- Missing CSRF protection on state-changing operations
+- before_action authentication/authorization skips
+- Unsafe deserialization (YAML.load, Marshal.load)
+- SQL injection via raw SQL or unsanitized conditions
+- Command injection via system(), exec(), backticks
+- Missing authorization in controllers/actions
+- Insecure file uploads without validation
+
 Additional notes:
 - Even if something is only exploitable from the local network, it can still be a HIGH severity issue
+- Pay special attention to endpoints that modify data without proper authorization
+- Check for missing authentication on internal/admin routes
 
 ANALYSIS METHODOLOGY:
 
@@ -322,7 +402,11 @@ CONFIDENCE SCORING:
 - Below 0.7: Don't report (too speculative)
 
 FINAL REMINDER:
-Focus on CRITICAL, HIGH, and MEDIUM findings. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a security engineer would confidently raise in a security review. Reserve CRITICAL for the most severe, trivially exploitable vulnerabilities.
+Focus on CRITICAL, HIGH, and MEDIUM findings. Err on the side of reporting potential security issues rather than missing them - it's better to have a finding reviewed and dismissed than to miss a real vulnerability. Each finding should represent a legitimate security concern that could impact the application's security posture. Pay special attention to:
+1. Missing authentication/authorization (very common)
+2. GraphQL resolver security (often overlooked)
+3. Mass assignment vulnerabilities (common in Rails)
+4. Inconsistent security controls across endpoints
 
 IMPORTANT EXCLUSIONS - DO NOT REPORT:
 - Denial of Service (DOS) vulnerabilities or resource exhaustion attacks
