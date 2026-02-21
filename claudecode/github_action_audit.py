@@ -772,8 +772,8 @@ def main():
         print(json.dumps(output, indent=2))
         
         # Exit with appropriate code
-        high_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() == 'HIGH'])
-        sys.exit(EXIT_GENERAL_ERROR if high_severity_count > 0 else EXIT_SUCCESS)
+        high_critical_severity_count = len([f for f in kept_findings if f.get('severity', '').upper() in ['HIGH', 'CRITICAL']])
+        sys.exit(EXIT_GENERAL_ERROR if high_critical_severity_count > 0 else EXIT_SUCCESS)
         
     except Exception as e:
         print(json.dumps({'error': f'Unexpected error: {str(e)}'}))
