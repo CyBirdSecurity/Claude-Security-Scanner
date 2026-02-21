@@ -186,6 +186,102 @@ class GitHubActionClient:
         return ''.join(filtered_sections)
 
 
+def get_repository_files(repo_path: Path, excluded_dirs: List[str]) -> Dict[str, Any]:
+    """Get all code files in the repository for full repo scan.
+
+    Args:
+        repo_path: Path to repository root
+        excluded_dirs: List of directory patterns to exclude
+
+    Returns:
+        Dictionary with file information similar to PR data format
+    """
+    # Common code file extensions
+    code_extensions = {
+        '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rb', '.php',
+        '.c', '.cpp', '.h', '.hpp', '.cs', '.swift', '.kt', '.rs', '.scala',
+        '.sh', '.bash', '.yaml', '.yml', '.json', '.xml', '.sql', '.tf',
+        '.html', '.css', '.scss', '.vue', '.r', '.m', '.pl', '.lua'
+    }
+
+    # Directories to always skip
+    default_excluded = {
+        '.git', 'node_modules', 'vendor', 'venv', '.venv', 'env', '.env',
+        '__pycache__', '.pytest_cache', 'build', 'dist', 'target', '.next',
+        'coverage', '.nyc_output', 'tmp', 'temp', '.cache', 'logs'
+    }
+
+    # Add user-provided exclusions
+    for pattern in excluded_dirs:
+        default_excluded.add(pattern.strip('/'))
+
+    files = []
+    total_additions = 0
+
+    logger.info(f"Scanning repository at {repo_path} for code files...")
+
+    for file_path in repo_path.rglob('*'):
+        # Skip if not a file
+        if not file_path.is_file():
+            continue
+
+        # Get relative path
+        try:
+            rel_path = file_path.relative_to(repo_path)
+        except ValueError:
+            continue
+
+        # Check if file is in an excluded directory
+        parts = rel_path.parts
+        if any(part in default_excluded for part in parts):
+            continue
+
+        # Check file extension
+        if file_path.suffix.lower() not in code_extensions:
+            continue
+
+        # Count lines as "additions" for the format
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                line_count = sum(1 for _ in f)
+            total_additions += line_count
+        except Exception:
+            line_count = 0
+
+        files.append({
+            'filename': str(rel_path),
+            'status': 'modified',
+            'additions': line_count,
+            'deletions': 0,
+            'changes': line_count
+        })
+
+    logger.info(f"Found {len(files)} code files in repository")
+
+    return {
+        'number': 0,  # No PR number for full repo scan
+        'title': 'Full Repository Security Scan',
+        'body': f'Comprehensive security audit of {len(files)} code files',
+        'user': 'automated-scan',
+        'created_at': '',
+        'updated_at': '',
+        'state': 'open',
+        'head': {
+            'ref': 'main',
+            'sha': '',
+            'repo': {'full_name': ''}
+        },
+        'base': {
+            'ref': 'main',
+            'sha': ''
+        },
+        'changed_files': len(files),
+        'additions': total_additions,
+        'deletions': 0,
+        'files': files
+    }
+
+
 class SimpleClaudeRunner:
     """Simplified Claude Code runner for GitHub Actions."""
     
@@ -346,30 +442,40 @@ class SimpleClaudeRunner:
 
 
 
-def get_environment_config() -> Tuple[str, int]:
+def get_environment_config() -> Tuple[str, Optional[int], str]:
     """Get and validate environment configuration.
-    
+
     Returns:
-        Tuple of (repo_name, pr_number)
-        
+        Tuple of (repo_name, pr_number, scan_mode)
+        - repo_name: Repository name (owner/repo)
+        - pr_number: PR number (None for full repo scans)
+        - scan_mode: 'pr' for PR scans, 'full_repo' for full repository scans
+
     Raises:
         ConfigurationError: If required environment variables are missing or invalid
     """
     repo_name = os.environ.get('GITHUB_REPOSITORY')
     pr_number_str = os.environ.get('PR_NUMBER')
-    
+    scan_mode = os.environ.get('SCAN_MODE', 'pr')
+
     if not repo_name:
         raise ConfigurationError('GITHUB_REPOSITORY environment variable required')
-    
+
+    # For full repo scans, PR_NUMBER is not required
+    if scan_mode == 'full_repo':
+        logger.info("Running in full repository scan mode")
+        return repo_name, None, scan_mode
+
+    # For PR scans, PR_NUMBER is required
     if not pr_number_str:
-        raise ConfigurationError('PR_NUMBER environment variable required')
-    
+        raise ConfigurationError('PR_NUMBER environment variable required for PR scan mode')
+
     try:
         pr_number = int(pr_number_str)
     except ValueError:
         raise ConfigurationError(f'Invalid PR_NUMBER: {pr_number_str}')
-        
-    return repo_name, pr_number
+
+    return repo_name, pr_number, scan_mode
 
 
 def initialize_clients() -> Tuple[GitHubActionClient, SimpleClaudeRunner]:
@@ -523,7 +629,7 @@ def main():
     try:
         # Get environment configuration
         try:
-            repo_name, pr_number = get_environment_config()
+            repo_name, pr_number, scan_mode = get_environment_config()
         except ConfigurationError as e:
             print(json.dumps({'error': str(e)}))
             sys.exit(EXIT_CONFIGURATION_ERROR)
@@ -569,17 +675,35 @@ def main():
         if not claude_ok:
             print(json.dumps({'error': f'Claude Code not available: {claude_error}'}))
             sys.exit(EXIT_GENERAL_ERROR)
-        
-        # Get PR data
-        try:
-            pr_data = github_client.get_pr_data(repo_name, pr_number)
-            pr_diff = github_client.get_pr_diff(repo_name, pr_number)
-        except Exception as e:
-            print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
-            sys.exit(EXIT_GENERAL_ERROR)
-                
+
+        # Get data based on scan mode
+        if scan_mode == 'full_repo':
+            # Full repository scan - get all code files
+            try:
+                repo_path = os.environ.get('REPO_PATH')
+                repo_dir = Path(repo_path) if repo_path else Path.cwd()
+                pr_data = get_repository_files(repo_dir, github_client.excluded_dirs)
+                pr_diff = None  # No diff for full repo scans
+                logger.info(f"Full repository scan: analyzing {pr_data['changed_files']} files")
+            except Exception as e:
+                print(json.dumps({'error': f'Failed to scan repository files: {str(e)}'}))
+                sys.exit(EXIT_GENERAL_ERROR)
+        else:
+            # PR scan - get changed files only
+            try:
+                pr_data = github_client.get_pr_data(repo_name, pr_number)
+                pr_diff = github_client.get_pr_diff(repo_name, pr_number)
+                logger.info(f"PR scan: analyzing {pr_data['changed_files']} changed files")
+            except Exception as e:
+                print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
+                sys.exit(EXIT_GENERAL_ERROR)
+
         # Generate security audit prompt
-        prompt = get_security_audit_prompt(pr_data, pr_diff, custom_scan_instructions=custom_scan_instructions)
+        from claudecode.prompts import get_full_repo_scan_prompt
+        if scan_mode == 'full_repo':
+            prompt = get_full_repo_scan_prompt(pr_data, custom_scan_instructions=custom_scan_instructions)
+        else:
+            prompt = get_security_audit_prompt(pr_data, pr_diff, custom_scan_instructions=custom_scan_instructions)
         
         # Run Claude Code security audit
         # Get repo directory from environment or use current directory
@@ -601,12 +725,13 @@ def main():
         # Filter findings to reduce false positives
         original_findings = results.get('findings', [])
         
-        # Prepare PR context for better filtering
+        # Prepare context for better filtering
         pr_context = {
             'repo_name': repo_name,
-            'pr_number': pr_number,
+            'pr_number': pr_number if pr_number else 0,
             'title': pr_data.get('title', ''),
-            'description': pr_data.get('body', '')
+            'description': pr_data.get('body', ''),
+            'scan_mode': scan_mode
         }
         
         # Apply findings filter (including final directory exclusion)
@@ -616,8 +741,9 @@ def main():
         
         # Prepare output
         output = {
-            'pr_number': pr_number,
+            'pr_number': pr_number if pr_number else 0,
             'repo': repo_name,
+            'scan_mode': scan_mode,
             'findings': kept_findings,
             'analysis_summary': results.get('analysis_summary', {}),
             'filtering_summary': {

@@ -13,10 +13,16 @@ An AI-powered security review GitHub Action using Claude to analyze code changes
 
 ## Quick Start
 
+The action supports two scan modes:
+- **Pull Request Scans**: Analyzes only changed files in PRs
+- **Full Repository Scans**: Comprehensive security audit of entire codebase
+
+### Pull Request Scans
+
 Add this to your repository's `.github/workflows/security.yml`:
 
 ```yaml
-name: Security Review
+name: PR Security Review
 
 permissions:
   pull-requests: write  # Needed for leaving PR comments
@@ -39,6 +45,35 @@ jobs:
         with:
           comment-pr: true
           upload-sarif: true  # Upload to GitHub Code Scanning (optional)
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+```
+
+### Full Repository Scans
+
+For comprehensive security audits of your entire codebase:
+
+```yaml
+name: Weekly Security Scan
+
+permissions:
+  security-events: write  # Required for SARIF upload
+  contents: read
+  actions: read
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sundays at midnight
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-security-review@main
+        with:
+          upload-sarif: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
 ```
 
@@ -69,6 +104,40 @@ This action is not hardened against prompt injection attacks and should only be 
 |--------|-------------|
 | `findings-count` | Total number of security findings |
 | `results-file` | Path to the results JSON file |
+
+## Scan Modes
+
+### Pull Request Scans (Diff-Based)
+
+**When**: Triggered on `pull_request` events
+**What**: Analyzes only files changed in the PR
+**Features**:
+- Fast, focused analysis on new/modified code
+- Inline PR comments on specific lines
+- Diff-aware scanning reduces false positives
+- Cached to prevent duplicate scans
+
+**Best for**: Catching issues in new code before merge
+
+### Full Repository Scans (Comprehensive)
+
+**When**: Triggered on `workflow_dispatch`, `push`, or `schedule` events
+**What**: Analyzes all code files in the repository
+**Features**:
+- Comprehensive security audit of entire codebase
+- Identifies existing vulnerabilities
+- SARIF upload to GitHub Code Scanning
+- Ideal for scheduled security reviews
+
+**Best for**:
+- Weekly/monthly security audits
+- Baseline security assessment
+- Finding existing vulnerabilities in legacy code
+- Compliance reporting
+
+**File Types Scanned**: `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.java`, `.go`, `.rb`, `.php`, `.c`, `.cpp`, `.h`, `.cs`, `.swift`, `.kt`, `.rs`, `.scala`, `.sh`, `.yaml`, `.yml`, `.json`, `.sql`, `.tf`, `.html`, `.css`, and more
+
+**Excluded Directories**: `node_modules`, `vendor`, `venv`, `.git`, `__pycache__`, `build`, `dist`, `target`, `.next`, `coverage`, `tmp`, `.cache`, `logs` (and custom exclusions)
 
 ## How It Works
 
