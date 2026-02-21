@@ -125,17 +125,20 @@ class SarifGenerator:
         """
         Generate a stable fingerprint for finding deduplication.
 
-        GitHub uses fingerprints to match results across runs.
+        Uses a shorter fingerprint format to avoid conflicts with GitHub's
+        CodeQL fingerprint calculation.
 
         Args:
             finding: Finding dictionary
 
         Returns:
-            SHA-256 hash as fingerprint
+            First 16 characters of SHA-256 hash as fingerprint
         """
         # Create fingerprint from file, line, and category
         fingerprint_string = f"{finding.get('file', '')}:{finding.get('line', 0)}:{finding.get('category', '')}"
-        return hashlib.sha256(fingerprint_string.encode()).hexdigest()
+        # Use first 16 chars of hash to match GitHub's format expectations
+        full_hash = hashlib.sha256(fingerprint_string.encode()).hexdigest()
+        return full_hash[:16]
 
     def _extract_rules(self, findings: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """
@@ -151,8 +154,24 @@ class SarifGenerator:
 
         for finding in findings:
             category = finding.get('category', 'unknown')
+            severity = finding.get('severity', 'MEDIUM').upper()
 
             if category not in rules:
+                # Get the security-severity for this rule
+                confidence = finding.get('confidence', 0.8)
+                security_severity = self._calculate_severity_score(severity, confidence)
+
+                # Map severity to proper tags for GitHub
+                severity_tag = severity.lower()
+                if severity == "CRITICAL":
+                    severity_tag = "critical"
+                elif severity == "HIGH":
+                    severity_tag = "high"
+                elif severity == "MEDIUM":
+                    severity_tag = "medium"
+                else:
+                    severity_tag = "low"
+
                 # Create rule definition
                 rules[category] = {
                     "id": category,
@@ -167,12 +186,17 @@ class SarifGenerator:
                         "text": finding.get('recommendation', 'Review and remediate this security issue'),
                         "markdown": f"**Recommendation:** {finding.get('recommendation', 'Review and remediate this security issue')}"
                     },
+                    "defaultConfiguration": {
+                        "level": self._get_sarif_level(severity)
+                    },
                     "properties": {
                         "tags": [
                             "security",
+                            severity_tag,
                             category.split('_')[0] if '_' in category else category
                         ],
-                        "precision": "high"
+                        "precision": "high",
+                        "security-severity": str(security_severity)
                     }
                 }
 
@@ -205,12 +229,25 @@ class SarifGenerator:
             # Get relative file path
             file_path = self._get_relative_path(finding.get('file', 'unknown'))
 
+            # Build message text with exploit scenario on new line
+            message_text = finding.get('description', 'Security vulnerability detected')
+            if finding.get('exploit_scenario'):
+                message_text += f"\n\nExploit Scenario: {finding['exploit_scenario']}"
+
+            # Build markdown message with better formatting
+            message_markdown = finding.get('description', 'Security vulnerability detected')
+            if finding.get('exploit_scenario'):
+                message_markdown += f"\n\n**Exploit Scenario:** {finding['exploit_scenario']}"
+            if finding.get('recommendation'):
+                message_markdown += f"\n\n**Recommendation:** {finding['recommendation']}"
+
             # Build result object
             result = {
                 "ruleId": finding.get('category', 'unknown'),
                 "level": self._get_sarif_level(severity),
                 "message": {
-                    "text": finding.get('description', 'Security vulnerability detected')
+                    "text": message_text,
+                    "markdown": message_markdown
                 },
                 "locations": [{
                     "physicalLocation": {
@@ -225,7 +262,8 @@ class SarifGenerator:
                     }
                 }],
                 "partialFingerprints": {
-                    "primaryLocationLineHash": self._generate_fingerprint(finding)
+                    # Use custom key to avoid conflicts with GitHub's fingerprint calculation
+                    "claudeSecurityReview/v1": self._generate_fingerprint(finding)
                 },
                 "properties": {
                     "security-severity": str(security_severity),
@@ -234,10 +272,7 @@ class SarifGenerator:
                 }
             }
 
-            # Add exploit scenario and recommendation if available
-            if finding.get('exploit_scenario'):
-                result['message']['markdown'] = f"{finding['description']}\n\n**Exploit Scenario:** {finding['exploit_scenario']}"
-
+            # Add recommendation to properties for filtering/metadata
             if finding.get('recommendation'):
                 result['properties']['recommendation'] = finding['recommendation']
 
