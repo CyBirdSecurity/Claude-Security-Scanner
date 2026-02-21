@@ -194,6 +194,22 @@ Findings are aligned with [CVSS 4.0](https://www.first.org/cvss/v4.0/specificati
 
 For CRITICAL and HIGH severity findings, the exact score within the range is calculated based on the confidence level, providing granular risk assessment.
 
+### Fingerprint Stability
+
+Claude Code Security Review uses content-based fingerprinting to ensure security findings remain stable across scans:
+
+- **Fingerprints based on actual code**: Uses the code content at the finding location, not LLM-generated labels
+- **Stable across rescans**: The same vulnerability will maintain the same fingerprint even if Claude categorizes it differently between runs
+- **Handles refactoring**: Normalizes whitespace to remain stable through code formatting changes (prettier, black, gofmt, etc.)
+- **Graceful degradation**: Falls back to file:line fingerprinting if code cannot be read
+
+This ensures that:
+- Findings persist correctly in GitHub Code Scanning between scans
+- The same vulnerability won't be incorrectly marked as "fixed" and then reappear
+- Severity changes from LLM variations won't create duplicate findings
+
+**Migration Note**: If upgrading from version 1.x, existing findings in GitHub Code Scanning will be marked as "fixed" once, and new findings will be created with stable fingerprints. This is a one-time migration effect to gain long-term stability.
+
 ### Viewing Results
 
 Once uploaded, findings appear in:

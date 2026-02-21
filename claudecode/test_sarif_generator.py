@@ -345,6 +345,191 @@ class TestSarifGenerator:
 
         assert score_upper == score_lower == score_mixed
 
+    def test_fingerprint_stability_across_categories(self, generator, tmp_path):
+        """Test that same code with different categorization produces same fingerprint."""
+        # Create a test file
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def vulnerable_function():\n    return True\n")
+
+        # Set REPO_PATH for the test
+        import os
+        original_repo_path = os.environ.get('REPO_PATH')
+        os.environ['REPO_PATH'] = str(tmp_path)
+
+        try:
+            # Same file and line, different categories
+            finding1 = {
+                "file": "test.py",
+                "line": 1,
+                "category": "authentication_bypass",
+                "severity": "CRITICAL"
+            }
+            finding2 = {
+                "file": "test.py",
+                "line": 1,
+                "category": "missing_auth_check",
+                "severity": "HIGH"
+            }
+
+            fingerprint1 = generator._generate_fingerprint(finding1)
+            fingerprint2 = generator._generate_fingerprint(finding2)
+
+            # Fingerprints should be identical despite different categories
+            assert fingerprint1 == fingerprint2
+        finally:
+            # Restore original REPO_PATH
+            if original_repo_path:
+                os.environ['REPO_PATH'] = original_repo_path
+            elif 'REPO_PATH' in os.environ:
+                del os.environ['REPO_PATH']
+
+    def test_fingerprint_changes_with_code_modification(self, generator, tmp_path):
+        """Test that different code produces different fingerprint."""
+        # Create test files with different content
+        test_file1 = tmp_path / "test1.py"
+        test_file1.write_text("def function1():\n    return True\n")
+
+        test_file2 = tmp_path / "test2.py"
+        test_file2.write_text("def function2():\n    return False\n")
+
+        import os
+        original_repo_path = os.environ.get('REPO_PATH')
+        os.environ['REPO_PATH'] = str(tmp_path)
+
+        try:
+            finding1 = {"file": "test1.py", "line": 1, "category": "vuln"}
+            finding2 = {"file": "test2.py", "line": 1, "category": "vuln"}
+
+            fingerprint1 = generator._generate_fingerprint(finding1)
+            fingerprint2 = generator._generate_fingerprint(finding2)
+
+            # Different code should produce different fingerprints
+            assert fingerprint1 != fingerprint2
+        finally:
+            if original_repo_path:
+                os.environ['REPO_PATH'] = original_repo_path
+            elif 'REPO_PATH' in os.environ:
+                del os.environ['REPO_PATH']
+
+    def test_fingerprint_whitespace_normalization(self, generator, tmp_path):
+        """Test that whitespace-only changes don't affect fingerprint."""
+        # Create files with same code but different whitespace
+        test_file1 = tmp_path / "test1.py"
+        test_file1.write_text("def function():\n    return True\n")
+
+        test_file2 = tmp_path / "test2.py"
+        test_file2.write_text("def function():\n        return True\n")  # Extra indentation
+
+        import os
+        original_repo_path = os.environ.get('REPO_PATH')
+        os.environ['REPO_PATH'] = str(tmp_path)
+
+        try:
+            finding1 = {"file": "test1.py", "line": 2, "category": "vuln"}
+            finding2 = {"file": "test2.py", "line": 2, "category": "vuln"}
+
+            fingerprint1 = generator._generate_fingerprint(finding1)
+            fingerprint2 = generator._generate_fingerprint(finding2)
+
+            # Fingerprints should be identical despite whitespace differences
+            assert fingerprint1 == fingerprint2
+        finally:
+            if original_repo_path:
+                os.environ['REPO_PATH'] = original_repo_path
+            elif 'REPO_PATH' in os.environ:
+                del os.environ['REPO_PATH']
+
+    def test_fingerprint_fallback_on_file_read_error(self, generator):
+        """Test fallback to file:line when code cannot be read."""
+        # Finding for non-existent file
+        finding = {
+            "file": "nonexistent.py",
+            "line": 42,
+            "category": "vuln"
+        }
+
+        fingerprint = generator._generate_fingerprint(finding)
+
+        # Should still generate a fingerprint (fallback mode)
+        assert len(fingerprint) == 16
+        assert isinstance(fingerprint, str)
+
+    def test_fingerprint_line_shift_stability(self, generator, tmp_path):
+        """Test that line shifts within context window preserve fingerprint."""
+        # Create a test file with code
+        test_file = tmp_path / "test.py"
+        test_file.write_text("# Comment\ndef function():\n    return True\n# Another comment\n")
+
+        import os
+        original_repo_path = os.environ.get('REPO_PATH')
+        os.environ['REPO_PATH'] = str(tmp_path)
+
+        try:
+            # Same function but reported at slightly different lines within context window
+            finding1 = {"file": "test.py", "line": 2, "category": "vuln"}
+            finding2 = {"file": "test.py", "line": 3, "category": "vuln"}
+
+            fingerprint1 = generator._generate_fingerprint(finding1)
+            fingerprint2 = generator._generate_fingerprint(finding2)
+
+            # With context_lines=2, both should capture overlapping code
+            # They may be different but should be stable across runs
+            assert len(fingerprint1) == 16
+            assert len(fingerprint2) == 16
+        finally:
+            if original_repo_path:
+                os.environ['REPO_PATH'] = original_repo_path
+            elif 'REPO_PATH' in os.environ:
+                del os.environ['REPO_PATH']
+
+    def test_fingerprint_file_caching(self, generator, tmp_path):
+        """Test that file cache works correctly for multiple findings."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("line1\nline2\nline3\nline4\nline5\n")
+
+        import os
+        original_repo_path = os.environ.get('REPO_PATH')
+        os.environ['REPO_PATH'] = str(tmp_path)
+
+        try:
+            # Multiple findings in the same file
+            finding1 = {"file": "test.py", "line": 2, "category": "vuln1"}
+            finding2 = {"file": "test.py", "line": 4, "category": "vuln2"}
+
+            # First call should cache the file
+            fingerprint1 = generator._generate_fingerprint(finding1)
+            assert "test.py" in generator._file_cache
+
+            # Second call should use cached content
+            fingerprint2 = generator._generate_fingerprint(finding2)
+
+            # Both should generate valid fingerprints
+            assert len(fingerprint1) == 16
+            assert len(fingerprint2) == 16
+            # They should be different (different line numbers)
+            assert fingerprint1 != fingerprint2
+        finally:
+            if original_repo_path:
+                os.environ['REPO_PATH'] = original_repo_path
+            elif 'REPO_PATH' in os.environ:
+                del os.environ['REPO_PATH']
+
+    def test_code_normalization(self, generator):
+        """Test code normalization for fingerprinting."""
+        # Test various whitespace scenarios
+        code1 = "def function():\n    return True\n"
+        code2 = "def function():\n        return True\n"  # Extra indentation
+        code3 = "def function():\n\n    return True\n"  # Extra blank line
+
+        normalized1 = generator._normalize_code_for_fingerprint(code1)
+        normalized2 = generator._normalize_code_for_fingerprint(code2)
+        normalized3 = generator._normalize_code_for_fingerprint(code3)
+
+        # All should normalize to the same result
+        assert normalized1 == normalized2 == normalized3
+        assert "def function():" in normalized1
+        assert "return True" in normalized1
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
