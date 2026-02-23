@@ -36,7 +36,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: anthropics/claude-code-security-review@main
+      - uses: CyBirdSecurity/Claude-Security-Scanner@main
         with:
           comment-pr: true
           upload-sarif: true  # Upload to GitHub Code Scanning (optional)
@@ -66,7 +66,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: anthropics/claude-code-security-review@main
+      - uses: CyBirdSecurity/Claude-Security-Scanner@main
         with:
           upload-sarif: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
