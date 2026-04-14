@@ -1,6 +1,6 @@
 # Claude Code Security Reviewer
 
-An AI-powered security review GitHub Action using Claude to analyze code changes for security vulnerabilities. This action provides intelligent, context-aware security analysis for pull requests using Anthropic's Claude Code tool for deep semantic security analysis. See Anthropic's post [here](https://www.anthropic.com/news/automate-security-reviews-with-claude-code) for more details. This fork adds support for sarif uploads into Github Code Scanning, whole repository scanning via a checked workflow file, as well as CVSS alignmnet for severity setting. 
+An AI-powered security review GitHub Action using Claude to analyze code changes for security vulnerabilities. This action provides intelligent, context-aware security analysis for pull requests using Anthropic's Claude Code tool for deep semantic security analysis. See Anthropic's post [here](https://www.anthropic.com/news/automate-security-reviews-with-claude-code) for more details. This fork adds support for sarif uploads into Github Code Scanning, whole repository scanning via a checked workflow file, as well as CVSS alignment for severity setting. 
 
 ## Features
 
